@@ -31,10 +31,14 @@ class CowDataset(Dataset):
             for line in lines:
                 parts = line.strip().split()
                 cls, x_center, y_center, width, height = map(float, parts)
-                x_min = (x_center - width / 2) * image.shape[1]
-                y_min = (y_center - height / 2) * image.shape[0]
-                x_max = (x_center + width / 2) * image.shape[1]
-                y_max = (y_center + height / 2) * image.shape[0]
+                x_center *= 300
+                y_center *= 500
+                width *= 300
+                height *= 500
+                x_min = x_center - width / 2
+                y_min = y_center - height / 2
+                x_max = x_center + width / 2
+                y_max = y_center + height / 2
                 boxes.append([x_min, y_min, x_max, y_max, int(cls)])
 
         boxes = np.array(boxes)
