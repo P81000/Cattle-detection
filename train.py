@@ -25,16 +25,19 @@ class CowDataset(Dataset):
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        if image.shape[0] != 300 or image.shape[1] != 500:
+            raise ValueError(f"Image at {img_path} has incorrect dimensions: {image.shape}")
+
         boxes = []
         with open(label_path, 'r') as f:
             lines = f.readlines()
             for line in lines:
                 parts = line.strip().split()
                 cls, x_center, y_center, width, height = map(float, parts)
-                x_center *= 300
-                y_center *= 500
-                width *= 300
-                height *= 500
+                x_center *= 500
+                y_center *= 300
+                width *= 500
+                height *= 300
                 x_min = x_center - width / 2
                 y_min = y_center - height / 2
                 x_max = x_center + width / 2
