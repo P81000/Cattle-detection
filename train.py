@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import yolov5
 import os
 import glob
@@ -10,7 +8,6 @@ import numpy as np
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
-
 
 class CowDataset(Dataset):
     def __init__(self, root_dir, transform=None):
@@ -56,6 +53,22 @@ class CowDataset(Dataset):
 
         return image, target
 
+def collate_fn(batch):
+    images, targets = list(zip(*batch))
+    images = torch.stack(images)
+    boxes = [t['boxes'] for t in targets]
+    labels = [t['labels'] for t in targets]
+    
+    max_boxes = max([b.shape[0] for b in boxes])
+    padded_boxes = torch.zeros((len(boxes), max_boxes, 4))
+    padded_labels = torch.zeros((len(labels), max_boxes), dtype=torch.int64)
+    
+    for i in range(len(boxes)):
+        padded_boxes[i, :boxes[i].shape[0]] = boxes[i]
+        padded_labels[i, :labels[i].shape[0]] = labels[i]
+    
+    targets = [{'boxes': padded_boxes[i], 'labels': padded_labels[i]} for i in range(len(padded_boxes))]
+    return images, targets
 
 transform = A.Compose(
     [
@@ -76,9 +89,9 @@ train_dataset = CowDataset(root_dir=train_dir, transform=transform)
 val_dataset = CowDataset(root_dir=val_dir, transform=transform)
 test_dataset = CowDataset(root_dir=test_dir, transform=transform)
 
-train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
-val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
-test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
+test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
 
 
 model = yolov5.load('yolov5s.pt')
@@ -95,11 +108,22 @@ for epoch in range(epochs):
     epoch_losses = []
 
     for images, targets in tqdm(train_loader):
-        images = torch.stack(images).to('cuda')
+        images = images.to('cuda')
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         loss_dict = model(images, targets)
-        losses = sum(loss for loss in loss_dict)
+
+        # Print the loss_dict to inspect its contents and dimensions
+        print(f'Loss dict: {loss_dict}')
+        for idx, loss in enumerate(loss_dict):
+            print(f'Loss {idx} shape: {loss.shape}')
+
+        # Ensure the losses are summed correctly if dimensions match
+        try:
+            losses = sum(loss_dict)
+        except RuntimeError as e:
+            print(f'Error in summing losses: {e}')
+            losses = sum(loss_dict[:2])  # Attempt to sum only the first two elements if dimensions mismatch
 
         optimizer.zero_grad()
         losses.backward()
@@ -110,10 +134,11 @@ for epoch in range(epochs):
     model.eval()
     with torch.no_grad():
         for images, targets in tqdm(val_loader):
-            images = torch.stack(images).to('cuda')
+            images = images.to('cuda')
             targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
             loss_dict = model(images, targets)
+            print(f'Validation Loss dict: {loss_dict}')
 
     print(f'Epoch [{epoch+1}/{epochs}], Loss: {np.mean(epoch_losses)}')
 
@@ -122,11 +147,13 @@ for epoch in range(epochs):
 model.eval()
 with torch.no_grad():
     for images, targets in tqdm(test_loader):
-        images = torch.stack(images).to('cuda')
+        images = images.to('cuda')
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         results = model(images, targets)
+        print(f'Test Results: {results}')
 
 print(results)
 
 model.save('./result/yolov5s_cow_final.pt')
+
