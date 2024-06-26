@@ -25,7 +25,7 @@ class CowDataset(Dataset):
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        if image.shape[0] != 300 or image.shape[1] != 500:
+        if image.shape[0] != 500 or image.shape[1] != 300:
             raise ValueError(f"Image at {img_path} has incorrect dimensions: {image.shape}")
 
         boxes = []
@@ -34,10 +34,10 @@ class CowDataset(Dataset):
             for line in lines:
                 parts = line.strip().split()
                 cls, x_center, y_center, width, height = map(float, parts)
-                x_center *= 500
-                y_center *= 300
-                width *= 500
-                height *= 300
+                x_center *= 300
+                y_center *= 500
+                width *= 300
+                height *= 500
                 x_min = x_center - width / 2
                 y_min = y_center - height / 2
                 x_max = x_center + width / 2
@@ -82,6 +82,10 @@ def main():
         for images, targets in tqdm(train_loader):
             images = images.to('cuda')
             targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
+
+            # Print shapes for debugging
+            print(f'Image shapes: {[img.shape for img in images]}')
+            print(f'Target shapes: {[{k: v.shape for k, v in t.items()} for t in targets]}')
 
             loss_dict = model(images, targets)
 
