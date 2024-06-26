@@ -1,18 +1,15 @@
-import yolov5
 import os
 import glob
-import torch
-from torch.utils.data import Dataset, DataLoader
 import cv2
 import numpy as np
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+import torch
+from torch.utils.data import Dataset, DataLoader
+import yolov5
 from tqdm import tqdm
 
 class CowDataset(Dataset):
-    def __init__(self, root_dir, transform=None):
+    def __init__(self, root_dir):
         self.root_dir = root_dir
-        self.transform = transform
         self.image_paths = glob.glob(os.path.join(root_dir, '*.jpg'))
         self.label_paths = glob.glob(os.path.join(root_dir, '*.txt'))
         self.image_paths.sort()
@@ -42,118 +39,83 @@ class CowDataset(Dataset):
 
         boxes = np.array(boxes)
 
-        if self.transform:
-            augmented = self.transform(image=image, bboxes=boxes, class_labels=boxes[:, 4])
-            image = augmented['image']
-            boxes = np.concatenate([augmented['bboxes'], np.expand_dims(boxes[:, 4], axis=1)], axis=1)
-
-        target = {}
-        target['boxes'] = torch.as_tensor(boxes[:, :4], dtype=torch.float32)
-        target['labels'] = torch.as_tensor(boxes[:, 4], dtype=torch.int64)
-
-        return image, target
+        return image, boxes
 
 def collate_fn(batch):
     images, targets = list(zip(*batch))
-    images = torch.stack(images)
-    boxes = [t['boxes'] for t in targets]
-    labels = [t['labels'] for t in targets]
-    
-    max_boxes = max([b.shape[0] for b in boxes])
-    padded_boxes = torch.zeros((len(boxes), max_boxes, 4))
-    padded_labels = torch.zeros((len(labels), max_boxes), dtype=torch.int64)
-    
-    for i in range(len(boxes)):
-        padded_boxes[i, :boxes[i].shape[0]] = boxes[i]
-        padded_labels[i, :labels[i].shape[0]] = labels[i]
-    
-    targets = [{'boxes': padded_boxes[i], 'labels': padded_labels[i]} for i in range(len(padded_boxes))]
+    images = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() for img in images])
+    targets = [{'boxes': torch.tensor(t[:, :4], dtype=torch.float32), 'labels': torch.tensor(t[:, 4], dtype=torch.int64)} for t in targets]
     return images, targets
 
-transform = A.Compose(
-    [
-        A.Resize(640, 640),
-        A.HorizontalFlip(p=0.5),
-        A.VerticalFlip(p=0.5),
-        A.RandomBrightnessContrast(p=0.2),
-        ToTensorV2()
-    ],
-    bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels'])
-)
+def main():
+    train_dir = './dataset/images/train'
+    val_dir = './dataset/images/val'
+    test_dir = './dataset/images/test'
 
-train_dir = './dataset/images/train'
-val_dir = './dataset/images/val'
-test_dir = './dataset/images/test'
+    train_dataset = CowDataset(root_dir=train_dir)
+    val_dataset = CowDataset(root_dir=val_dir)
+    test_dataset = CowDataset(root_dir=test_dir)
 
-train_dataset = CowDataset(root_dir=train_dir, transform=transform)
-val_dataset = CowDataset(root_dir=val_dir, transform=transform)
-test_dataset = CowDataset(root_dir=test_dir, transform=transform)
+    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
+    test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
 
-train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
-test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
+    model = yolov5.load('yolov5s.pt')
 
+    model.names = ['Cow']
 
-model = yolov5.load('yolov5s.pt')
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
-model.names = ['Cow']
+    epochs = 100
+    for epoch in range(epochs):
+        model.train()
+        epoch_losses = []
 
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
-
-epochs = 100
-for epoch in range(epochs):
-    model.train()
-
-    epoch_losses = []
-
-    for images, targets in tqdm(train_loader):
-        images = images.to('cuda')
-        targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
-
-        loss_dict = model(images, targets)
-
-        # Print the loss_dict to inspect its contents and dimensions
-        print(f'Loss dict: {loss_dict}')
-        for idx, loss in enumerate(loss_dict):
-            print(f'Loss {idx} shape: {loss.shape}')
-
-        # Ensure the losses are summed correctly if dimensions match
-        try:
-            losses = sum(loss_dict)
-        except RuntimeError as e:
-            print(f'Error in summing losses: {e}')
-            losses = sum(loss_dict[:2])  # Attempt to sum only the first two elements if dimensions mismatch
-
-        optimizer.zero_grad()
-        losses.backward()
-        optimizer.step()
-
-        epoch_losses.append(losses.item())
-
-    model.eval()
-    with torch.no_grad():
-        for images, targets in tqdm(val_loader):
+        for images, targets in tqdm(train_loader):
             images = images.to('cuda')
             targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
             loss_dict = model(images, targets)
-            print(f'Validation Loss dict: {loss_dict}')
 
-    print(f'Epoch [{epoch+1}/{epochs}], Loss: {np.mean(epoch_losses)}')
+            losses = sum(loss for loss in loss_dict.values())
 
-    scheduler.step()
+            optimizer.zero_grad()
+            losses.backward()
+            optimizer.step()
 
-model.eval()
-with torch.no_grad():
-    for images, targets in tqdm(test_loader):
-        images = images.to('cuda')
-        targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
+            epoch_losses.append(losses.item())
 
-        results = model(images, targets)
-        print(f'Test Results: {results}')
+        print(f'Epoch [{epoch+1}/{epochs}], Loss: {np.mean(epoch_losses)}')
 
-print(results)
+        model.eval()
+        with torch.no_grad():
+            val_losses = []
+            for images, targets in tqdm(val_loader):
+                images = images.to('cuda')
+                targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
-model.save('./result/yolov5s_cow_final.pt')
+                loss_dict = model(images, targets)
+                losses = sum(loss for loss in loss_dict.values())
+                val_losses.append(losses.item())
+
+            print(f'Validation Loss: {np.mean(val_losses)}')
+
+        scheduler.step()
+
+    model.eval()
+    with torch.no_grad():
+        test_results = []
+        for images, targets in tqdm(test_loader):
+            images = images.to('cuda')
+            targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
+
+            results = model(images, targets)
+            test_results.append(results)
+
+    print(f'Test Results: {test_results}')
+    model.save('./result/yolov5s_cow_final.pt')
+
+if __name__ == "__main__":
+    main()
 
