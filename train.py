@@ -59,7 +59,7 @@ class CowDataset(Dataset):
 
 transform = A.Compose(
     [
-        A.Resize(640, 640),
+        A.Resize(300, 300),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.5),
         A.RandomBrightnessContrast(p=0.2),
