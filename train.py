@@ -62,9 +62,9 @@ class CowDataset(Dataset):
         return image, target
 
 def collate_fn(batch):
-    images, targets = zip(*batch)
-    images = torch.stack([img for img in images])
-    targets = [{k: torch.stack([t[i][k] for t in targets]) if isinstance(t[0][k], torch.Tensor) else [t[i][k] for t in targets] for k in targets[0]} for i in range(len(images))]
+    images = [item[0] for item in batch]
+    targets = [item[1] for item in batch]
+    images = torch.stack(images, dim=0)
     return images, targets
 
 transform = A.Compose(
