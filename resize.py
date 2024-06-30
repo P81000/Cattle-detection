@@ -35,7 +35,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     width = 300
-    height = 500
+    height = 300
 
     size = (width, height)
     resizeImgInFolder(args.input_folder, args.output_folder, size)
