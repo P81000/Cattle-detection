@@ -48,7 +48,7 @@ class CowDataset(Dataset):
         if self.transform:
             augmented = self.transform(image=image, bboxes=boxes, class_labels=boxes[:, 4])
             image = augmented['image']
-            boxes = augmented['bboxes']
+            boxes = np.concatenate([augmented['bboxes'], np.expand_dims(boxes[:, 4], axis=1)], axis=1)
 
         target = {}
         target['boxes'] = torch.as_tensor(boxes[:, :4], dtype=torch.float32)
