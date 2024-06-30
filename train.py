@@ -61,6 +61,11 @@ class CowDataset(Dataset):
 
         return image, target
 
+def collate_fn(batch):
+    images, targets = zip(*batch)
+    images = [img for img in images]
+    targets = [{k: v for k, v in t.items()} for t in targets]
+    return images, targets
 
 transform = A.Compose(
     [
@@ -81,9 +86,9 @@ train_dataset = CowDataset(root_dir=train_dir, transform=transform)
 val_dataset = CowDataset(root_dir=val_dir, transform=transform)
 test_dataset = CowDataset(root_dir=test_dir, transform=transform)
 
-train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
-val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
-test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
+test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
 
 model = yolov5.load('yolov5s.pt')
 
@@ -97,11 +102,11 @@ for epoch in range(epochs):
     model.train()
 
     for images, targets in tqdm(train_loader):
-        images = torch.stack(images).to('cuda')
+        images = [img.to('cuda') for img in images]
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         loss_dict = model(images, targets)
-        losses = sum(loss_dict)
+        losses = sum(loss_dict.values())
 
         optimizer.zero_grad()
         losses.backward()
@@ -110,7 +115,7 @@ for epoch in range(epochs):
     model.eval()
     with torch.no_grad():
         for images, targets in tqdm(val_loader):
-            images = torch.stack(images).to('cuda')
+            images = [img.to('cuda') for img in images]
             targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
             loss_dict = model(images, targets)
@@ -122,7 +127,7 @@ for epoch in range(epochs):
 model.eval()
 with torch.no_grad():
     for images, targets in tqdm(test_loader):
-        images = torch.stack(images).to('cuda')
+        images = [img.to('cuda') for img in images]
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         results = model(images, targets)
