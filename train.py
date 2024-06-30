@@ -65,7 +65,7 @@ transform = A.Compose(
         A.RandomBrightnessContrast(p=0.2),
         ToTensorV2()
     ],
-    bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels'])
+    bbox_params=A.BboxParams(format='yolo', label_fields=['class_labels'])
 )
 
 train_dir = './dataset/images/train'
