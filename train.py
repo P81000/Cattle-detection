@@ -97,7 +97,7 @@ for epoch in range(epochs):
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         loss_dict = model(images, targets)
-        losses = sum(loss for loss in loss_dict))
+        losses = sum(loss for loss in loss_dict)
 
         optimizer.zero_grad()
         losses.backward()
