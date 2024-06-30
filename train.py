@@ -65,6 +65,11 @@ def collate_fn(batch):
     images = [item[0] for item in batch]
     targets = [item[1] for item in batch]
     images = torch.stack(images, dim=0)
+
+    # Verifique se cada item na lista de alvos tem o mesmo número de caixas delimitadoras
+    num_targets = [len(target['boxes']) for target in targets]
+    assert all(num == num_targets[0] for num in num_targets), "Número de caixas delimitadoras deve ser o mesmo para todas as imagens no batch."
+
     return images, targets
 
 transform = A.Compose(
