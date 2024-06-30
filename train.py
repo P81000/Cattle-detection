@@ -31,22 +31,24 @@ class CowDataset(Dataset):
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+        height, width = image.shape[:2]
+
         boxes = []
         with open(label_path, 'r') as f:
             lines = f.readlines()
             for line in lines:
                 parts = line.strip().split()
-                cls, x_center, y_center, width, height = map(float, parts)
-                x_min = (x_center - width / 2) * image.shape[1]
-                y_min = (y_center - height / 2) * image.shape[0]
-                x_max = (x_center + width / 2) * image.shape[1]
-                y_max = (y_center + height / 2) * image.shape[0]
-                boxes.append([x_min, y_min, x_max, y_max, int(cls)])
+                cls, x_center, y_center, box_width, box_height = map(float, parts)
+                x_center /= width
+                y_center /= height
+                box_width /= width
+                box_height /= height
+                boxes.append([x_center, y_center, box_width, box_height, int(cls)])
 
         boxes = np.array(boxes)
 
         if self.transform:
-            augmented = self.transform(image=image, bboxes=boxes, class_labels=boxes[:, 4])
+            augmented = self.transform(image=image, bboxes=boxes[:, :4], class_labels=boxes[:, 4])
             image = augmented['image']
             boxes = np.concatenate([augmented['bboxes'], np.expand_dims(boxes[:, 4], axis=1)], axis=1)
 
