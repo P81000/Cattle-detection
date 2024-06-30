@@ -59,7 +59,7 @@ class CowDataset(Dataset):
 
 transform = A.Compose(
     [
-        A.Resize(640, 640),
+        A.Resize(300,300),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.5),
         A.RandomBrightnessContrast(p=0.2),
@@ -97,7 +97,7 @@ for epoch in range(epochs):
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         loss_dict = model(images, targets)
-        losses = sum(loss for loss in loss_dict.values())
+        losses = sum(loss for loss in loss_dict))
 
         optimizer.zero_grad()
         losses.backward()
