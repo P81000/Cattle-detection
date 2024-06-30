@@ -63,8 +63,8 @@ class CowDataset(Dataset):
 
 def collate_fn(batch):
     images, targets = zip(*batch)
-    images = [img for img in images]
-    targets = [{k: v for k, v in t.items()} for t in targets]
+    images = torch.stack([img for img in images])
+    targets = [{k: torch.stack([t[k] for t in targets])} for k in targets[0]]
     return images, targets
 
 transform = A.Compose(
@@ -102,7 +102,7 @@ for epoch in range(epochs):
     model.train()
 
     for images, targets in tqdm(train_loader):
-        images = [img.to('cuda') for img in images]
+        images = images.to('cuda')
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         loss_dict = model(images, targets)
@@ -115,7 +115,7 @@ for epoch in range(epochs):
     model.eval()
     with torch.no_grad():
         for images, targets in tqdm(val_loader):
-            images = [img.to('cuda') for img in images]
+            images = images.to('cuda')
             targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
             loss_dict = model(images, targets)
@@ -127,7 +127,7 @@ for epoch in range(epochs):
 model.eval()
 with torch.no_grad():
     for images, targets in tqdm(test_loader):
-        images = [img.to('cuda') for img in images]
+        images = images.to('cuda')
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         results = model(images, targets)
