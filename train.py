@@ -11,15 +11,12 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
 
-
 class CowDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = root_dir
         self.transform = transform
-        self.image_paths = glob.glob(os.path.join(root_dir, '*.jpg'))
-        self.label_paths = glob.glob(os.path.join(root_dir, '*.txt'))
-        self.image_paths.sort()
-        self.label_paths.sort()
+        self.image_paths = sorted(glob.glob(os.path.join(root_dir, '*.jpg')))
+        self.label_paths = sorted(glob.glob(os.path.join(root_dir, '*.txt')))
 
     def __len__(self):
         return len(self.image_paths)
@@ -37,29 +34,37 @@ class CowDataset(Dataset):
             for line in lines:
                 parts = line.strip().split()
                 cls, x_center, y_center, width, height = map(float, parts)
-                x_min = (x_center - width / 2) * image.shape[1]
-                y_min = (y_center - height / 2) * image.shape[0]
-                x_max = (x_center + width / 2) * image.shape[1]
-                y_max = (y_center + height / 2) * image.shape[0]
-                boxes.append([x_min, y_min, x_max, y_max, int(cls)])
+                boxes.append([x_center, y_center, width, height, int(cls)])
 
         boxes = np.array(boxes)
 
         if self.transform:
             augmented = self.transform(image=image, bboxes=boxes, class_labels=boxes[:, 4])
             image = augmented['image']
-            boxes = np.concatenate([augmented['bboxes'], np.expand_dims(boxes[:, 4], axis=1)], axis=1)
+            boxes = np.array(augmented['bboxes'])
+
+        # Convert boxes back to absolute coordinates for model training
+        boxes_abs = []
+        for box in boxes:
+            x_center, y_center, width, height, cls = box
+            x_min = (x_center - width / 2) * image.shape[1]
+            y_min = (y_center - height / 2) * image.shape[0]
+            x_max = (x_center + width / 2) * image.shape[1]
+            y_max = (y_center + height / 2) * image.shape[0]
+            boxes_abs.append([x_min, y_min, x_max, y_max, cls])
+
+        boxes_abs = np.array(boxes_abs)
 
         target = {}
-        target['boxes'] = torch.as_tensor(boxes[:, :4], dtype=torch.float32)
-        target['labels'] = torch.as_tensor(boxes[:, 4], dtype=torch.int64)
+        target['boxes'] = torch.as_tensor(boxes_abs[:, :4], dtype=torch.float32)
+        target['labels'] = torch.as_tensor(boxes_abs[:, 4], dtype=torch.int64)
 
         return image, target
 
 
 transform = A.Compose(
     [
-        A.Resize(300,300),
+        A.Resize(300, 300),
         A.HorizontalFlip(p=0.5),
         A.VerticalFlip(p=0.5),
         A.RandomBrightnessContrast(p=0.2),
@@ -80,7 +85,6 @@ train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=
 val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
 test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
 
-
 model = yolov5.load('yolov5s.pt')
 
 model.names = ['Cow']
@@ -97,7 +101,7 @@ for epoch in range(epochs):
         targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
         loss_dict = model(images, targets)
-        losses = sum(loss for loss in loss_dict)
+        losses = sum(loss_dict)
 
         optimizer.zero_grad()
         losses.backward()
@@ -126,3 +130,4 @@ with torch.no_grad():
 print(results)
 
 model.save('./result/yolov5s_cow_final.pt')
+
