@@ -91,9 +91,9 @@ train_dataset = CowDataset(root_dir=train_dir, transform=transform)
 val_dataset = CowDataset(root_dir=val_dir, transform=transform)
 test_dataset = CowDataset(root_dir=test_dir, transform=transform)
 
-train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
-val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
-test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
+train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, collate_fn=collate_fn)
+val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
+test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=collate_fn)
 
 model = yolov5.load('yolov5s.pt')
 
