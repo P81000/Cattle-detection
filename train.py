@@ -15,10 +15,8 @@ class CowDataset(Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = root_dir
         self.transform = transform
-        self.image_paths = glob.glob(os.path.join(root_dir, '*.jpg'))
-        self.label_paths = glob.glob(os.path.join(root_dir, '*.txt'))
-        self.image_paths.sort()
-        self.label_paths.sort()
+        self.image_paths = sorted(glob.glob(os.path.join(root_dir, '*.jpg')))
+        self.label_paths = sorted(glob.glob(os.path.join(root_dir, '*.txt')))
 
     def __len__(self):
         return len(self.image_paths)
@@ -130,3 +128,4 @@ with torch.no_grad():
 print(results)
 
 model.save('./result/yolov5s_cow_final.pt')
+
