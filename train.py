@@ -1,15 +1,21 @@
+#!/usr/bin/env python3
+
+import yolov5
 import os
 import glob
-import cv2
-import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
-import yolov5
+import cv2
+import numpy as np
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 from tqdm import tqdm
 
+
 class CowDataset(Dataset):
-    def __init__(self, root_dir):
+    def __init__(self, root_dir, transform=None):
         self.root_dir = root_dir
+        self.transform = transform
         self.image_paths = glob.glob(os.path.join(root_dir, '*.jpg'))
         self.label_paths = glob.glob(os.path.join(root_dir, '*.txt'))
         self.image_paths.sort()
@@ -25,108 +31,98 @@ class CowDataset(Dataset):
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        if image.shape[0] != 500 or image.shape[1] != 300:
-            raise ValueError(f"Image at {img_path} has incorrect dimensions: {image.shape}")
-
         boxes = []
         with open(label_path, 'r') as f:
             lines = f.readlines()
             for line in lines:
                 parts = line.strip().split()
                 cls, x_center, y_center, width, height = map(float, parts)
-                x_center *= 300
-                y_center *= 500
-                width *= 300
-                height *= 500
-                x_min = x_center - width / 2
-                y_min = y_center - height / 2
-                x_max = x_center + width / 2
-                y_max = y_center + height / 2
+                x_min = (x_center - width / 2) * image.shape[1]
+                y_min = (y_center - height / 2) * image.shape[0]
+                x_max = (x_center + width / 2) * image.shape[1]
+                y_max = (y_center + height / 2) * image.shape[0]
                 boxes.append([x_min, y_min, x_max, y_max, int(cls)])
 
         boxes = np.array(boxes)
 
-        return image, boxes
+        if self.transform:
+            augmented = self.transform(image=image, bboxes=boxes, class_labels=boxes[:, 4])
+            image = augmented['image']
+            boxes = augmented['bboxes']
 
-def collate_fn(batch):
-    images, targets = list(zip(*batch))
-    images = torch.stack([torch.from_numpy(img).permute(2, 0, 1).float() for img in images])
-    targets = [{'boxes': torch.tensor(t[:, :4], dtype=torch.float32), 'labels': torch.tensor(t[:, 4], dtype=torch.int64)} for t in targets]
-    return images, targets
+        target = {}
+        target['boxes'] = torch.as_tensor(boxes[:, :4], dtype=torch.float32)
+        target['labels'] = torch.as_tensor(boxes[:, 4], dtype=torch.int64)
 
-def main():
-    train_dir = './dataset/images/train'
-    val_dir = './dataset/images/val'
-    test_dir = './dataset/images/test'
+        return image, target
 
-    train_dataset = CowDataset(root_dir=train_dir)
-    val_dataset = CowDataset(root_dir=val_dir)
-    test_dataset = CowDataset(root_dir=test_dir)
 
-    train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=collate_fn)
-    val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
-    test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=collate_fn)
+transform = A.Compose(
+    [
+        A.Resize(640, 640),
+        A.HorizontalFlip(p=0.5),
+        A.VerticalFlip(p=0.5),
+        A.RandomBrightnessContrast(p=0.2),
+        ToTensorV2()
+    ],
+    bbox_params=A.BboxParams(format='pascal_voc', label_fields=['class_labels'])
+)
 
-    model = yolov5.load('yolov5s.pt')
+train_dir = './dataset/images/train'
+val_dir = './dataset/images/val'
+test_dir = './dataset/images/val'
 
-    model.names = ['Cow']
+train_dataset = CowDataset(root_dir=train_dir, transform=transform)
+val_dataset = CowDataset(root_dir=val_dir, transform=transform)
+test_dataset = CowDataset(root_dir=test_dir, transform=transform)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
+train_loader = DataLoader(train_dataset, batch_size=8, shuffle=True, collate_fn=lambda x: tuple(zip(*x)))
+val_loader = DataLoader(val_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
+test_loader = DataLoader(test_dataset, batch_size=8, shuffle=False, collate_fn=lambda x: tuple(zip(*x)))
 
-    epochs = 100
-    for epoch in range(epochs):
-        model.train()
-        epoch_losses = []
 
-        for images, targets in tqdm(train_loader):
-            images = images.to('cuda')
-            targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
+model = yolov5.load('yolov5s.pt')
 
-            # Print shapes for debugging
-            print(f'Image shapes: {[img.shape for img in images]}')
-            print(f'Target shapes: {[{k: v.shape for k, v in t.items()} for t in targets]}')
+model.names = ['Cow']
 
-            loss_dict = model(images, targets)
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.1)
 
-            losses = sum(loss for loss in loss_dict.values())
+epochs = 100
+for epoch in range(epochs):
+    model.train()
 
-            optimizer.zero_grad()
-            losses.backward()
-            optimizer.step()
+    for images, targets in tqdm(train_loader):
+        images = torch.stack(images).to('cuda')
+        targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
-            epoch_losses.append(losses.item())
+        loss_dict = model(images, targets)
+        losses = sum(loss for loss in loss_dict.values())
 
-        print(f'Epoch [{epoch+1}/{epochs}], Loss: {np.mean(epoch_losses)}')
-
-        model.eval()
-        with torch.no_grad():
-            val_losses = []
-            for images, targets in tqdm(val_loader):
-                images = images.to('cuda')
-                targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
-
-                loss_dict = model(images, targets)
-                losses = sum(loss for loss in loss_dict.values())
-                val_losses.append(losses.item())
-
-            print(f'Validation Loss: {np.mean(val_losses)}')
-
-        scheduler.step()
+        optimizer.zero_grad()
+        losses.backward()
+        optimizer.step()
 
     model.eval()
     with torch.no_grad():
-        test_results = []
-        for images, targets in tqdm(test_loader):
-            images = images.to('cuda')
+        for images, targets in tqdm(val_loader):
+            images = torch.stack(images).to('cuda')
             targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
 
-            results = model(images, targets)
-            test_results.append(results)
+            loss_dict = model(images, targets)
 
-    print(f'Test Results: {test_results}')
-    model.save('./result/yolov5s_cow_final.pt')
+    print(f'Epoch [{epoch+1}/{epochs}], Loss: {losses.item()}')
 
-if __name__ == "__main__":
-    main()
+    scheduler.step()
 
+model.eval()
+with torch.no_grad():
+    for images, targets in tqdm(test_loader):
+        images = torch.stack(images).to('cuda')
+        targets = [{k: v.to('cuda') for k, v in t.items()} for t in targets]
+
+        results = model(images, targets)
+
+print(results)
+
+model.save('./result/yolov5s_cow_final.pt')
