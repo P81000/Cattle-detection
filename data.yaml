@@ -1,0 +1,6 @@
+train: /home/ubuntu/Cattle-detection/dataset/images/train
+val: /home/ubuntu/Cattle-detection/dataset/images/val
+test: /home/ubuntu/Cattle-detection/dataset/images/test
+
+nc: 1
+names: ["Cow"]
