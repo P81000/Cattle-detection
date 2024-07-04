@@ -2,10 +2,10 @@ import os
 import shutil
 import random
 
-source = "/home/p81000/Codes/src/dataset/images"
-train = source + "/train"
-test = source + "/test"
-val = source + "/val"
+source = "/home/masteguin/Codes/Cattle-detection/new"
+train = "/home/masteguin/Codes/Cattle-detection/dataset/images/train/"
+test = "/home/masteguin/Codes/Cattle-detection/dataset/images/test/"
+val = "/home/masteguin/Codes/Cattle-detection/dataset/images/val/"
 
 files = os.listdir(source)
 pairs = {os.path.splitext(f)[0] for f in files}
