@@ -1,6 +1,6 @@
 from ultralytics import YOLO
 
-model = YOLO("/home/ubuntu/Cattle-detection/runs/detect/train2/weights/best.pt")
+model = YOLO("/home/ubuntu/Cattle-detection/runs/detect/train3/weights/best.pt")
 
 source = "finalcounttest.mp4"
 
