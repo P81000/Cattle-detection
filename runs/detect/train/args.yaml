@@ -1,16 +1,16 @@
 task: detect
 mode: train
-model: yolov9m.pt
+model: yolov5n.pt
 data: data.yaml
 epochs: 100
 time: null
-patience: 100
-batch: 16
-imgsz: 320
+patience: 7
+batch: 32
+imgsz: 256
 save: true
 save_period: -1
 cache: false
-device: 0
+device: null
 workers: 8
 project: null
 name: train
@@ -20,7 +20,7 @@ optimizer: auto
 verbose: true
 seed: 0
 deterministic: true
-single_cls: false
+single_cls: true
 rect: false
 cos_lr: false
 close_mosaic: 10
@@ -32,7 +32,7 @@ freeze: null
 multi_scale: false
 overlap_mask: true
 mask_ratio: 4
-dropout: 0.0
+dropout: 0.15
 val: true
 split: val
 save_json: false
@@ -47,7 +47,7 @@ source: null
 vid_stride: 1
 stream_buffer: false
 visualize: false
-augment: false
+augment: true
 agnostic_nms: false
 classes: null
 retina_masks: false
@@ -73,7 +73,7 @@ nms: false
 lr0: 0.01
 lrf: 0.01
 momentum: 0.937
-weight_decay: 0.0005
+weight_decay: 0.0015
 warmup_epochs: 3.0
 warmup_momentum: 0.8
 warmup_bias_lr: 0.1
